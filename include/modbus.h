@@ -61,7 +61,8 @@
 #define MODBUS_ERROR_CRC -2 // checksum failed
 #define MODBUS_ERROR_FRAME_INVALID -3 // invalid frame format / length
 #define MODBUS_ERROR_OUT_OF_BOUNDS -4 // requested register is out of bounds
-#define MODBUS_ERROR_NOT_IMPLEMENTED -5
+#define MODBUS_ERROR_FUNCTION_NOT_IMPLEMENTED -5 // function not implemented in callback
+#define MODBUS_ERROR_REGISTER_NOT_IMPLEMENTED -6 // register not implemented in callback
 
 /*
  * Data types
@@ -93,6 +94,18 @@ typedef enum {
 	MODBUS_REPORT_SLAVE_ID = 17,
 	MODBUS_READ_DEVICE_IDENTIFICATION = 43, /* sub codes: 14 */
 } modbus_function_code_t;
+
+typedef enum {
+	MODBUS_EXCEPTION_ILLEGAL_FUNCTION = 1,
+	MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS = 2,
+	MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE = 3,
+	MODBUS_EXCEPTION_SLAVE_DEVICE_FAILURE = 4,
+	MODBUS_EXCEPTION_ACKNOWLEDGE = 5,
+	MODBUS_EXCEPTION_SLAVE_DEVICE_BUSY = 6,
+	MODBUS_EXCEPTION_MEMORY_PARITY_ERROR = 8,
+	MODBUS_EXCEPTION_GATEWAY_PATH_UNAVAILABLE = 10,
+	MODBUS_EXCEPTION_GATEWAY_TARGET_DEVICE_FAILED_TO_RESPOND = 11,
+} modbus_exception_code_t;
 
 typedef struct {
 	uint8_t exception_code;
@@ -130,7 +143,7 @@ typedef enum {
  */
 
 /* device address: declared in modbus.c */
-extern uint8_t modbus_device_address;
+extern uint8_t modbus_slave_address;
 
 /* shared modbus buffer; defined in modbus.c; may be used elsewhere in code */
 extern uint8_t modbus_buffer[];
@@ -145,10 +158,10 @@ extern uint8_t modbus_buffer[];
  *     - modbus_uart_transmit_function() if response is required
  * Both functions have to be implemented by user.
  */
-int8_t modbus_process_msg(const uint8_t *buffer, int len);
-int8_t modbus_set_device_address(uint8_t address);
+int8_t modbus_slave_process_msg(const uint8_t *buffer, int len);
+int8_t modbus_slave_set_address(uint8_t address);
 /* modbus callback function type - should be implemented by user (e.g. in main.c) */
-int8_t modbus_callback_function(modbus_transaction_t *transaction);
+int8_t modbus_slave_callback(modbus_transaction_t *transaction);
 /* UART transmit function type - should be implemented by user (e.g. in main.c) */
 int8_t modbus_transmit_function(uint8_t *buffer, int data_len);
 

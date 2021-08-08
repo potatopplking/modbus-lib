@@ -17,7 +17,7 @@
 uint8_t modbus_buffer[MODBUS_MAX_RTU_FRAME_SIZE];
 
 /* device address: declared  */
-uint8_t modbus_device_address = MODBUS_DEFAULT_SLAVE_ADDRESS;
+uint8_t modbus_slave_address = MODBUS_DEFAULT_SLAVE_ADDRESS;
 
 /*
  * CRC16 functions
@@ -124,12 +124,13 @@ int8_t modbus_copy_reply_to_buffer(uint8_t *buffer, uint8_t *msg_len, modbus_tra
 	uint16_t crc16;
 	uint8_t byte_count;
 
-	buffer[0] = modbus_device_address;
+	buffer[0] = modbus_slave_address;
 	buffer[1] = transaction->function_code;
-
+	*msg_len = 5;
 
 	if (transaction->function_code | MODBUS_ERROR_FLAG) {
 		/* sending error reply */
+		buffer[2] = transaction->exception.exception_code;
 	}
 	switch (transaction->function_code) {
 		case MODBUS_READ_HOLDING_REGISTERS:
@@ -143,32 +144,33 @@ int8_t modbus_copy_reply_to_buffer(uint8_t *buffer, uint8_t *msg_len, modbus_tra
 				buffer[3 + 2*i] = transaction->buffer16b[i] >> 8;
 				buffer[4 + 2*i] = transaction->buffer16b[i] & 0xff;
 			}
-			crc16 = modbus_CRC16(buffer, *msg_len - 2); /* last two bytes is the checksum itself */
-			buffer[3 + byte_count] = crc16 & 0xff;
-			buffer[4 + byte_count] = crc16 >> 8;
 			break;
 	}
+	crc16 = modbus_CRC16(buffer, *msg_len - 2); /* last two bytes is the checksum itself */
+	buffer[*msg_len - 2] = crc16 & 0xff;
+	buffer[*msg_len - 1] = crc16 >> 8;
 }
 
 /*
- * Function definitions
+ * Public function definitions
  */
 
-int8_t modbus_set_device_address(uint8_t address)
+int8_t modbus_slave_set_address(uint8_t address)
 {
 	if (address == 0) {
 		/* address 0 is broadcast address */
 		return MODBUS_ERROR;
 	}
-	modbus_device_address = address;
+	modbus_slave_address = address;
 	return MODBUS_OK;
 }
 
-int8_t modbus_process_msg(const uint8_t *buffer, int len)
+int8_t modbus_slave_process_msg(const uint8_t *buffer, int len)
 {
 	/* transaction holds message context and content:
 	 * it wraps all necessary buffers and variables */
 	modbus_transaction_t transaction;
+	int8_t callback_result;
 
 	if (len < MODBUS_MINIMAL_FRAME_LEN) {
 		/* frame too short; return error */
@@ -179,11 +181,12 @@ int8_t modbus_process_msg(const uint8_t *buffer, int len)
 	uint16_t crc_calculated = modbus_CRC16(buffer, len - 2);
 	if (crc_received != crc_calculated) {
 		/* CRC mismatch, return error */
+		printf("crc mismatch: received 0x%x, calculated 0x%x\n", crc_received, crc_calculated);
 		return MODBUS_ERROR_CRC;
 	}
 	/* check if address matches ours */
 	uint8_t address = buffer[0];
-	if (address != modbus_device_address && address != MODBUS_BROADCAST_ADDR) {
+	if (address != modbus_slave_address && address != MODBUS_BROADCAST_ADDR) {
 		/* Message is not for us */
 		return MODBUS_OK;
 	}
@@ -207,14 +210,14 @@ int8_t modbus_process_msg(const uint8_t *buffer, int len)
 				transaction.register_count < 1 ||
 				transaction.register_count > MODBUS_MAX_REGISTERS
 		   ) {
-			transaction.exception.exception_code = 3;
+			transaction.exception.exception_code = MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE;
 		}
 		transaction.register_number = MODBUS_AO_START_NUMBER + transaction.register_address;
 		break;
 	default:
 		/* function code not known / not implemented, reply with
 		 * ExceptionCode 1 */
-		transaction.exception.exception_code = 1;
+		transaction.exception.exception_code = MODBUS_EXCEPTION_ILLEGAL_FUNCTION;
 		break;
 	}
 	/* data in modbus_buffer have been processed and buffer can be used for TX */
@@ -223,7 +226,16 @@ int8_t modbus_process_msg(const uint8_t *buffer, int len)
 		/* indicate error */
 		transaction.function_code |= MODBUS_ERROR_FLAG;
 	} else {
-		modbus_callback_function(&transaction);
+		callback_result = modbus_slave_callback(&transaction);
+		/* error handling */
+		if (callback_result != MODBUS_OK) {
+			transaction.function_code |= MODBUS_ERROR_FLAG;
+			if (callback_result == MODBUS_ERROR_FUNCTION_NOT_IMPLEMENTED) {
+				transaction.exception.exception_code = MODBUS_EXCEPTION_ILLEGAL_FUNCTION;
+			} else if (callback_result == MODBUS_ERROR_REGISTER_NOT_IMPLEMENTED) {
+				transaction.exception.exception_code = MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS;
+			}
+		}
 	}
 	uint8_t msg_len = 0;
 	if (address != MODBUS_BROADCAST_ADDR) {
