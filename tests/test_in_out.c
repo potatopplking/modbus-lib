@@ -77,7 +77,11 @@ int main(void)
 		modbus_set_device_address(current_device_address[test_number]);
 		modbus_process_msg(in_frame[test_number], in_frame_len[test_number]);
 		printf("\b\b ]\n\tActual out frame (slave response):\t[ ");
-		frames_match = true;
+		if (actual_out_frame_len[test_number] == 0) {
+			frames_match = false;
+		} else {
+			frames_match = true;
+		}
 		for (int i = 0; i < actual_out_frame_len[test_number]; i++) {
 			printf("0x%x, ", actual_out_frame[test_number][i]);
 			if (actual_out_frame[test_number][i] != out_frame[test_number][i]) {

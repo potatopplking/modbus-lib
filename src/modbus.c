@@ -20,8 +20,10 @@ uint8_t modbus_buffer[MODBUS_MAX_RTU_FRAME_SIZE];
 uint8_t modbus_device_address = MODBUS_DEFAULT_SLAVE_ADDRESS;
 
 /*
- * Static variables
+ * CRC16 functions
  */
+
+#ifdef CRC16_MEMORY_MAPPED
 
 /* Table of CRC values for highorder byte */
 static uint8_t auchCRCHi[] = {
@@ -63,9 +65,6 @@ static uint8_t auchCRCLo[] = {
 		0x44, 0x84, 0x85, 0x45, 0x87, 0x47, 0x46, 0x86, 0x82, 0x42, 0x43, 0x83, 0x41, 0x81, 0x80, 0x40
 };
 
-/*
- * Private functions
- */
 
 /* taken from "Modbus over serial line specification and implementation guide", Appendix B */
 uint16_t modbus_CRC16(const uint8_t *puchMsg, int usDataLen )
@@ -87,6 +86,36 @@ uint16_t modbus_CRC16(const uint8_t *puchMsg, int usDataLen )
 	}
 	return (uchCRCHi << 8 | uchCRCLo);
 }
+
+#else
+
+/* alternative CRC16 (without memory mapped values)
+ * taken from https://ctlsys.com/support/how_to_compute_the_modbus_rtu_message_crc/ */
+uint16_t modbus_CRC16(const uint8_t *buf, int len)
+{
+	uint16_t crc = 0xFFFF;
+
+	for (int pos = 0; pos < len; pos++) {
+		crc ^= (uint16_t)buf[pos];          // XOR byte into least sig. byte of crc
+       
+		for (int i = 8; i != 0; i--) {    // Loop over each bit
+			if ((crc & 0x0001) != 0) {      // If the LSB is set
+				crc >>= 1;                    // Shift right and XOR 0xA001
+				crc ^= 0xA001;
+			} else {                            // Else LSB is not set
+				crc >>= 1;                    // Just shift right
+			}
+		}
+	}
+	// Note, this number has low and high bytes swapped, so use it accordingly (or swap bytes)
+	return crc;  
+}
+
+#endif /* CRC16_MEMORY_MAPPED */
+
+/*
+ * Private functions
+ */
 
 /* here we assume buffer has minimal size of MODBUS_MAX_RTU_FRAME_SIZE;
  * this function is private, so hopefully it's going to be ok */
