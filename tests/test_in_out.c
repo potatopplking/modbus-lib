@@ -13,18 +13,21 @@ uint8_t in_frame[][MODBUS_MAX_RTU_FRAME_SIZE] = {
 	{0x11, 0x03, 0x00, 0x6B, 0x00, 0x03, 0x76, 0x87},
 	/* read holding register, use valid but not implemented address - slave should reply with exception */
 	{0x12, 0x03, 0x01, 0x6B, 0x00, 0x03, 0x77, 0x48},
+	/* read holding registers */
+	{0x01, 0x03, 0x02, 0x58, 0x00, 0x02, 0x44, 0x60},
 };
 
 uint8_t out_frame[][MODBUS_MAX_RTU_FRAME_SIZE] = {
 	{0x11, 0x03, 0x06, 0xAE, 0x41, 0x56, 0x52, 0x43, 0x40, 0x49, 0xAD},
 	{0x12, 0x83, 0x02, 0x31, 0x34},
+	{0x01, 0x03, 0x04, 0x03, 0xE8, 0x13, 0x88, 0x77, 0x15},
 };
 
-int in_frame_len[] = { 8, 8 };
-int out_frame_len[] = { 11, 5 };
+int in_frame_len[] = { 8, 8, 8 };
+int out_frame_len[] = { 11, 5, 9 };
 
 /* slave address for given test */
-uint8_t current_device_address[] = { 0x11, 0x12 };
+uint8_t current_device_address[] = { 0x11, 0x12, 0x01 };
 
 #define N 32
 uint8_t actual_out_frame[N][MODBUS_MAX_RTU_FRAME_SIZE];
@@ -46,6 +49,9 @@ int8_t modbus_slave_callback(modbus_transaction_t *transaction)
 				transaction->holding_registers[i] = dummy_holding_registers[i];
 			}
 			return MODBUS_OK;
+		} else if (transaction->register_number == 40601) {
+			transaction->holding_registers[0] = 1000;
+			transaction->holding_registers[1] = 5000;
 		} else {
 			return MODBUS_ERROR_REGISTER_NOT_IMPLEMENTED;
 		}
