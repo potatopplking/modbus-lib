@@ -5,31 +5,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include "modbus.h"
 
 uint8_t in_frame[][MODBUS_MAX_RTU_FRAME_SIZE] = {
 	/* read holding registers, starting address 108 (number 40108), 3 registers */
-	{0x11, 0x003, 0x00, 0x6B, 0x00, 0x03, 0x76, 0x87},
+	{0x11, 0x03, 0x00, 0x6B, 0x00, 0x03, 0x76, 0x87},
 };
 
 uint8_t out_frame[][MODBUS_MAX_RTU_FRAME_SIZE] = {
 	{0x11, 0x03, 0x06, 0xAE, 0x41, 0x56, 0x52, 0x43, 0x40, 0x49, 0xAD},
 };
 
-int in_frame_len[] = {
-	sizeof(in_frame[0])
-};
+int in_frame_len[] = { 8 };
+int out_frame_len[] = { 11 };
 
-int out_frame_len[] = {
-	sizeof(out_frame[0])
-};
+/* slave address for given test */
+uint8_t current_device_address[] = { 0x11 };
 
 #define N 32
 uint8_t actual_out_frame[N][MODBUS_MAX_RTU_FRAME_SIZE];
 uint8_t actual_out_frame_len[N];
 
 static int test_number = 0;
-const int test_count = sizeof(in_frame) / sizeof(uint16_t*);
+const int test_count = sizeof(in_frame) / sizeof(in_frame[0]);
 
 int8_t modbus_callback_function(modbus_transaction_t *transaction)
 {
@@ -64,9 +63,10 @@ int8_t modbus_transmit_function(uint8_t *buffer, int data_len)
 
 int main(void)
 {
+	bool frames_match;
 	printf("In-out frame test (%d tests total)\n", test_count);
 	while (test_number < test_count) {
-		printf("Starting test %d\n\tIn frame (master request):\t[ ", test_number);
+		printf("Test frame %d\n\tIn frame (master request):\t\t[ ", test_number);
 		for (int i = 0; i < in_frame_len[test_number]; i++) {
 			printf("0x%x, ", in_frame[test_number][i]);
 		}
@@ -74,11 +74,17 @@ int main(void)
 		for (int i = 0; i < out_frame_len[test_number]; i++) {
 			printf("0x%x, ", out_frame[test_number][i]);
 		}
+		modbus_set_device_address(current_device_address[test_number]);
 		modbus_process_msg(in_frame[test_number], in_frame_len[test_number]);
 		printf("\b\b ]\n\tActual out frame (slave response):\t[ ");
+		frames_match = true;
 		for (int i = 0; i < actual_out_frame_len[test_number]; i++) {
 			printf("0x%x, ", actual_out_frame[test_number][i]);
+			if (actual_out_frame[test_number][i] != out_frame[test_number][i]) {
+				frames_match = false;
+			}
 		}
+		printf("\b\b ]\nTest %s\n", frames_match ? "PASSED" : "FAILED, frame mismatch");
 		test_number++;
 	}
 }

@@ -16,8 +16,8 @@
  * during execution of modbus_process_message() */
 uint8_t modbus_buffer[MODBUS_MAX_RTU_FRAME_SIZE];
 
-/* device address: declared in modbus.c */
-uint8_t modbus_device_addr = MODBUS_DEFAULT_SLAVE_ADDR;
+/* device address: declared  */
+uint8_t modbus_device_address = MODBUS_DEFAULT_SLAVE_ADDRESS;
 
 /*
  * Static variables
@@ -88,31 +88,37 @@ uint16_t modbus_CRC16(const uint8_t *puchMsg, int usDataLen )
 	return (uchCRCHi << 8 | uchCRCLo);
 }
 
-int8_t modbus_create_msg(uint8_t *msg_buffer, const int msg_buffer_size, int *msg_size,
-			 modbus_function_code_t function_code,
-			 const uint8_t *data_buffer, const int data_size)
-{
-	if (msg_buffer_size < (data_size + MODBUS_MINIMAL_FRAME_LEN)) {
-		return MODBUS_ERROR;
-	}
-	msg_buffer[0] = modbus_device_addr;
-	msg_buffer[1] = (uint8_t) function_code;
-	for (int i = 0; i < data_size; i++) {
-		msg_buffer[i+2] = data_buffer[i];
-	}
-	/* calculate CRC */
-	uint16_t crc = modbus_CRC16(msg_buffer, data_size + 2);
-	msg_buffer[data_size + 2] = (uint8_t)crc;
-	msg_buffer[data_size + 3] = (uint8_t)(crc >> 8);
-	return MODBUS_OK;
-}
-
 /* here we assume buffer has minimal size of MODBUS_MAX_RTU_FRAME_SIZE;
  * this function is private, so hopefully it's going to be ok */
-int8_t modbus_copy_msg_to_buffer(uint8_t *buffer, uint8_t *msg_len, modbus_transaction_t *transaction)
+int8_t modbus_copy_reply_to_buffer(uint8_t *buffer, uint8_t *msg_len, modbus_transaction_t *transaction)
 {
+	uint16_t crc16;
+	uint8_t byte_count;
+
 	buffer[0] = modbus_device_address;
 	buffer[1] = transaction->function_code;
+
+
+	if (transaction->function_code | MODBUS_ERROR_FLAG) {
+		/* sending error reply */
+	}
+	switch (transaction->function_code) {
+		case MODBUS_READ_HOLDING_REGISTERS:
+		case MODBUS_READ_INPUT_REGISTERS:
+			byte_count = transaction->register_count * 2;
+			buffer[2] = byte_count;
+			*msg_len = byte_count + 5;
+			for (int i = 0; i < transaction->register_count; i++) {
+				// TODO endianness handling
+				/* buffer16b is alias for both holding and input register buffers */
+				buffer[3 + 2*i] = transaction->buffer16b[i] >> 8;
+				buffer[4 + 2*i] = transaction->buffer16b[i] & 0xff;
+			}
+			crc16 = modbus_CRC16(buffer, *msg_len - 2); /* last two bytes is the checksum itself */
+			buffer[3 + byte_count] = crc16 & 0xff;
+			buffer[4 + byte_count] = crc16 >> 8;
+			break;
+	}
 }
 
 /*
@@ -145,9 +151,10 @@ int8_t modbus_process_msg(const uint8_t *buffer, int len)
 	if (crc_received != crc_calculated) {
 		/* CRC mismatch, return error */
 		return MODBUS_ERROR_CRC;
+	}
 	/* check if address matches ours */
 	uint8_t address = buffer[0];
-	if (address != modbus_device_address || address != MODBUS_BROADCAST_ADDR) {
+	if (address != modbus_device_address && address != MODBUS_BROADCAST_ADDR) {
 		/* Message is not for us */
 		return MODBUS_OK;
 	}
@@ -160,19 +167,20 @@ int8_t modbus_process_msg(const uint8_t *buffer, int len)
 	 * MODBUS_READ_INPUT_REGISTERS: read-only registers
 	 * Modbus application protocol, section 6.4
 	 */
-	case MODBUS_READ_INPUT_REGISTERS:
+	case MODBUS_READ_HOLDING_REGISTERS:
 		if (len < (MODBUS_MINIMAL_FRAME_LEN + 4)) {
 			/* buffer too short to contain everything we need */
 			return MODBUS_ERROR;
 		}
-		transaction.starting_address = (buffer[2] << 8) | buffer[3];
-		transaction.register_quantity = (buffer[4] << 8) | buffer[5];
+		transaction.register_address = (buffer[2] << 8) | buffer[3];
+		transaction.register_count = (buffer[4] << 8) | buffer[5];
 		if (
-				transaction.register_quantity < 1 ||
-				transaction.register_quantity > MODBUS_READ_INPUT_MAX_REGISTER
-			) {
+				transaction.register_count < 1 ||
+				transaction.register_count > MODBUS_MAX_REGISTERS
+		   ) {
 			transaction.exception.exception_code = 3;
 		}
+		transaction.register_number = MODBUS_AO_START_NUMBER + transaction.register_address;
 		break;
 	default:
 		/* function code not known / not implemented, reply with

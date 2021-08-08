@@ -22,10 +22,10 @@
  *        note that when filling buffers (e.g. input_registers[]) user must
  *        ensure that all data is big-endian
  *    These functions are implementation-specific.
- * 2) Set device address (variable modbus_device_addr); you can do this either
- *      - setting modbus_device_addr directly (modbus.h needs to be included, duh)
+ * 2) Set device address (variable modbus_device_address); you can do this either
+ *      - setting modbus_device_address directly (modbus.h needs to be included, duh)
  *      - using modbus_set_device_address(uint8_t address) function
- *    Or you can leave address as-is (MODBUS_DEFAULT_SLAVE_ADDR) and set it via
+ *    Or you can leave address as-is (MODBUS_DEFAULT_SLAVE_ADDRESS) and set it via
  *    Modbus during runtime
  * 3) Call modbus_process_msg() after message reception; you need to observe Modbus RTU timing:
  *      - pauses between chars in frame are less or equal to 1.5 char
@@ -45,7 +45,7 @@
  */
 
 #define MODBUS_BROADCAST_ADDR 0
-#define MODBUS_DEFAULT_SLAVE_ADDR 254 /* 255 may be used for bridge device */
+#define MODBUS_DEFAULT_SLAVE_ADDRESS 254 /* 255 may be used for bridge device */
 /* minimal frame length is 4 bytes: 1 B slave address, 1 B function code, 2 B CRC */
 #define MODBUS_MINIMAL_FRAME_LEN 4
 #define MODBUS_MAX_RTU_FRAME_SIZE 256
@@ -95,14 +95,6 @@ typedef enum {
 } modbus_function_code_t;
 
 typedef struct {
-	/* request */
-	uint16_t register_quantity;
-	/* reply */
-	uint8_t byte_count;
-	uint16_t input_registers[MODBUS_MAX_REGISTERS];
-} read_inputs_t;
-
-typedef struct {
 	uint8_t exception_code;
 } exception_t;
 
@@ -110,7 +102,9 @@ typedef struct {
 	modbus_function_code_t function_code : 8;
 	uint16_t register_address; // e.g. first register of A0: 0
 	uint16_t register_number;  // e.g. first register of A0: 40001
-	uint8_t  register_quantity; // number of registers to be read/written
+	uint8_t  register_count; // number of registers to be read/written
+
+	exception_t exception;
 
 	union {
 		uint8_t buffer8b[MODBUS_MAX_RTU_FRAME_SIZE];
@@ -127,7 +121,7 @@ typedef enum {
 	MODBUS_DI_END_NUMBER = 19999,
 	MODBUS_AI_START_NUMBER = 30001, // Analog input registers
 	MODBUS_AI_END_NUMBER = 39999,
-	MODBUS_AO_START_NUMBER = 40001, // Analog output
+	MODBUS_AO_START_NUMBER = 40001, // Analog output (holding registers)
 	MODBUS_AO_END_NUMBER = 49999
 } modbus_register_number_t;
 
@@ -139,7 +133,7 @@ typedef enum {
 extern uint8_t modbus_device_address;
 
 /* shared modbus buffer; defined in modbus.c; may be used elsewhere in code */
-extern uin8t_t *modbus_buffer;
+extern uint8_t modbus_buffer[];
 
 /*
  * Function prototypes
