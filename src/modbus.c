@@ -11,6 +11,11 @@
  * Global variables
  */
 
+/* Modbus TX buffer; can be also used for RX in memory constrained systems (e.g. in main.c);
+ * NOTE if shared buffer is used for TX/RX, care must be taken to prevent writing into buffer
+ * during execution of modbus_process_message() */
+uint8_t modbus_buffer[MODBUS_MAX_RTU_FRAME_SIZE];
+
 /* device address: declared in modbus.c */
 uint8_t modbus_device_addr = MODBUS_DEFAULT_SLAVE_ADDR;
 
@@ -83,9 +88,9 @@ uint16_t modbus_CRC16(const uint8_t *puchMsg, int usDataLen )
 	return (uchCRCHi << 8 | uchCRCLo);
 }
 
-int8_t modbus_create_msg(	uint8_t *msg_buffer, const int msg_buffer_size, int *msg_size,
-							modbus_function_code_t function_code,
-							const uint8_t *data_buffer, const int data_size)
+int8_t modbus_create_msg(uint8_t *msg_buffer, const int msg_buffer_size, int *msg_size,
+			 modbus_function_code_t function_code,
+			 const uint8_t *data_buffer, const int data_size)
 {
 	if (msg_buffer_size < (data_size + MODBUS_MINIMAL_FRAME_LEN)) {
 		return MODBUS_ERROR;
@@ -102,6 +107,14 @@ int8_t modbus_create_msg(	uint8_t *msg_buffer, const int msg_buffer_size, int *m
 	return MODBUS_OK;
 }
 
+/* here we assume buffer has minimal size of MODBUS_MAX_RTU_FRAME_SIZE;
+ * this function is private, so hopefully it's going to be ok */
+int8_t modbus_copy_msg_to_buffer(uint8_t *buffer, uint8_t *msg_len, modbus_transaction_t *transaction)
+{
+	buffer[0] = modbus_device_address;
+	buffer[1] = transaction->function_code;
+}
+
 /*
  * Function definitions
  */
@@ -112,36 +125,35 @@ int8_t modbus_set_device_address(uint8_t address)
 		/* address 0 is broadcast address */
 		return MODBUS_ERROR;
 	}
-	modbus_device_addr = address;
+	modbus_device_address = address;
 	return MODBUS_OK;
 }
 
 int8_t modbus_process_msg(const uint8_t *buffer, int len)
 {
-	uint8_t exception_code = 0;
 	/* transaction holds message context and content:
 	 * it wraps all necessary buffers and variables */
 	modbus_transaction_t transaction;
 
 	if (len < MODBUS_MINIMAL_FRAME_LEN) {
 		/* frame too short; return error */
-		return MODBUS_FRAME_INVALID_ERROR;
+		return MODBUS_ERROR_FRAME_INVALID;
 	}
 	/* check CRC first */
 	uint16_t crc_received = (buffer[len - 1] << 8) | buffer[len - 2];
 	uint16_t crc_calculated = modbus_CRC16(buffer, len - 2);
 	if (crc_received != crc_calculated) {
 		/* CRC mismatch, return error */
-		return MODBUS_CRC_ERROR;
-	}
+		return MODBUS_ERROR_CRC;
 	/* check if address matches ours */
 	uint8_t address = buffer[0];
-	if (address != modbus_device_addr || address != MODBUS_BROADCAST_ADDR) {
+	if (address != modbus_device_address || address != MODBUS_BROADCAST_ADDR) {
 		/* Message is not for us */
 		return MODBUS_OK;
 	}
 	/* get function code */
 	transaction.function_code = buffer[1];
+	transaction.exception.exception_code = 0;
 
 	switch (transaction.function_code) {
 	/*
@@ -153,31 +165,33 @@ int8_t modbus_process_msg(const uint8_t *buffer, int len)
 			/* buffer too short to contain everything we need */
 			return MODBUS_ERROR;
 		}
-		transaction.read_inputs.starting_address = (buffer[2] << 8) | buffer[3];
-		transaction.read_inputs.register_quantity = (buffer[4] << 8) | buffer[5];
+		transaction.starting_address = (buffer[2] << 8) | buffer[3];
+		transaction.register_quantity = (buffer[4] << 8) | buffer[5];
 		if (
-				transaction.read_inputs.register_quantity < 1 ||
-				transaction.read_inputs.register_quantity > MODBUS_READ_INPUT_MAX_REGISTER
+				transaction.register_quantity < 1 ||
+				transaction.register_quantity > MODBUS_READ_INPUT_MAX_REGISTER
 			) {
-			exception_code = 3;
-			break;
+			transaction.exception.exception_code = 3;
 		}
 		break;
 	default:
 		/* function code not known / not implemented, reply with
 		 * ExceptionCode 1 */
-		exception_code = 1;
+		transaction.exception.exception_code = 1;
+		break;
 	}
+	/* data in modbus_buffer have been processed and buffer can be used for TX */
 	/* handle reply */
-	if (exception_code != 0) {
+	if (transaction.exception.exception_code != 0) {
 		/* indicate error */
 		transaction.function_code |= MODBUS_ERROR_FLAG;
-		transaction.exception.exception_code = exception_code;
 	} else {
-
+		modbus_callback_function(&transaction);
 	}
+	uint8_t msg_len = 0;
 	if (address != MODBUS_BROADCAST_ADDR) {
 		/* send only if master request was not broadcast */
-		modbus_copy_reply_to_buffer()
+		modbus_copy_reply_to_buffer(modbus_buffer, &msg_len, &transaction);
+		modbus_transmit_function(modbus_buffer, msg_len);
 	}
 }

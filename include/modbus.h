@@ -39,7 +39,6 @@
 #define SRC_MODBUS_H_
 
 #include "stdint.h"
-#include "crc8.h"
 
 /*
  * Defines & macros
@@ -111,6 +110,7 @@ typedef struct {
 	modbus_function_code_t function_code : 8;
 	uint16_t register_address; // e.g. first register of A0: 0
 	uint16_t register_number;  // e.g. first register of A0: 40001
+	uint8_t  register_quantity; // number of registers to be read/written
 
 	union {
 		uint8_t buffer8b[MODBUS_MAX_RTU_FRAME_SIZE];
@@ -136,7 +136,10 @@ typedef enum {
  */
 
 /* device address: declared in modbus.c */
-extern uint8_t modbus_device_addr;
+extern uint8_t modbus_device_address;
+
+/* shared modbus buffer; defined in modbus.c; may be used elsewhere in code */
+extern uin8t_t *modbus_buffer;
 
 /*
  * Function prototypes
@@ -148,11 +151,11 @@ extern uint8_t modbus_device_addr;
  *     - modbus_uart_transmit_function() if response is required
  * Both functions have to be implemented by user.
  */
-int8_t modbus_process_msg(const uint8_t buffer, int len);
+int8_t modbus_process_msg(const uint8_t *buffer, int len);
 int8_t modbus_set_device_address(uint8_t address);
 /* modbus callback function type - should be implemented by user (e.g. in main.c) */
-uint8_t modbus_callback_function(modbus_transaction_t *transaction);
+int8_t modbus_callback_function(modbus_transaction_t *transaction);
 /* UART transmit function type - should be implemented by user (e.g. in main.c) */
-uint8_t modbus_transmit_function(uint8_t *buffer, int data_len);
+int8_t modbus_transmit_function(uint8_t *buffer, int data_len);
 
 #endif /* SRC_MODBUS_H_ */
