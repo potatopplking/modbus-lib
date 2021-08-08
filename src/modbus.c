@@ -200,6 +200,7 @@ int8_t modbus_slave_process_msg(const uint8_t *buffer, int len)
 	 * Modbus application protocol, section 6.4
 	 */
 	case MODBUS_READ_HOLDING_REGISTERS:
+	case MODBUS_READ_INPUT_REGISTERS:
 		if (len < (MODBUS_MINIMAL_FRAME_LEN + 4)) {
 			/* buffer too short to contain everything we need */
 			return MODBUS_ERROR;
@@ -212,7 +213,12 @@ int8_t modbus_slave_process_msg(const uint8_t *buffer, int len)
 		   ) {
 			transaction.exception.exception_code = MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE;
 		}
-		transaction.register_number = MODBUS_AO_START_NUMBER + transaction.register_address;
+		if (transaction.function_code == MODBUS_READ_HOLDING_REGISTERS) {
+			transaction.register_number = MODBUS_AO_START_NUMBER;
+		} else if (transaction.function_code == MODBUS_READ_INPUT_REGISTERS) {
+			transaction.register_number = MODBUS_AI_START_NUMBER;
+		}
+		transaction.register_number += transaction.register_address;
 		break;
 	default:
 		/* function code not known / not implemented, reply with

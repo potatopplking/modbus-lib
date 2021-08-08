@@ -15,19 +15,22 @@ uint8_t in_frame[][MODBUS_MAX_RTU_FRAME_SIZE] = {
 	{0x12, 0x03, 0x01, 0x6B, 0x00, 0x03, 0x77, 0x48},
 	/* read holding registers */
 	{0x01, 0x03, 0x02, 0x58, 0x00, 0x02, 0x44, 0x60},
+	/* read input registers */
+	{0x01, 0x04, 0x00, 0xC8, 0x00, 0x02, 0xF0, 0x35},
 };
 
 uint8_t out_frame[][MODBUS_MAX_RTU_FRAME_SIZE] = {
 	{0x11, 0x03, 0x06, 0xAE, 0x41, 0x56, 0x52, 0x43, 0x40, 0x49, 0xAD},
 	{0x12, 0x83, 0x02, 0x31, 0x34},
 	{0x01, 0x03, 0x04, 0x03, 0xE8, 0x13, 0x88, 0x77, 0x15},
+	{0x01, 0x04, 0x04, 0x27, 0x10, 0xC3, 0x50, 0xA0, 0x39},
 };
 
-int in_frame_len[] = { 8, 8, 8 };
-int out_frame_len[] = { 11, 5, 9 };
+int in_frame_len[] = { 8, 8, 8, 8};
+int out_frame_len[] = { 11, 5, 9, 9 };
 
 /* slave address for given test */
-uint8_t current_device_address[] = { 0x11, 0x12, 0x01 };
+uint8_t current_device_address[] = { 0x11, 0x12, 0x01, 0x01 };
 
 #define N 32
 uint8_t actual_out_frame[N][MODBUS_MAX_RTU_FRAME_SIZE];
@@ -52,8 +55,15 @@ int8_t modbus_slave_callback(modbus_transaction_t *transaction)
 		} else if (transaction->register_number == 40601) {
 			transaction->holding_registers[0] = 1000;
 			transaction->holding_registers[1] = 5000;
+			return MODBUS_OK;
 		} else {
 			return MODBUS_ERROR_REGISTER_NOT_IMPLEMENTED;
+		}
+	} else if (transaction->function_code == MODBUS_READ_INPUT_REGISTERS) {
+		if (transaction->register_number == 30201) {
+			transaction->input_registers[0] = 10000;
+			transaction->input_registers[1] = 50000;
+			return MODBUS_OK;
 		}
 	} else {
 		return MODBUS_ERROR_FUNCTION_NOT_IMPLEMENTED;
