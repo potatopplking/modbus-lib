@@ -72,14 +72,22 @@
 typedef enum {
 	/* single bit access functions */
 	MODBUS_READ_COILS = 1,
+	MODBUS_READ_DO = 1, // alias
 	MODBUS_READ_DISCRETE_INPUTS = 2,
+	MODBUS_READ_DI = 2, // alias
 	MODBUS_WRITE_SINGLE_COIL = 5,
+	MODBUS_WRITE_SINGLE_DO = 5, // alias
 	MODBUS_WRITE_MULTIPLE_COILS = 15,
+	MODBUS_WRITE_MULTIPLE_DO = 15, // alias
 	/* 16-bit access functions */
 	MODBUS_READ_HOLDING_REGISTERS = 3,
+	MODBUS_READ_AO = 3, // alias
 	MODBUS_READ_INPUT_REGISTERS = 4,
+	MODBUS_READ_AI = 4, // alias
 	MODBUS_WRITE_SINGLE_REGISTER = 6,
+	MODBUS_WRITE_SINGLE_AO = 6, // alias
 	MODBUS_WRITE_MULTIPLE_REGISTERS = 16,
+	MODBUS_WRITE_MULTIPLE_AO = 16, // alias
 	MODBUS_MASK_WRITE_REGISTER = 22,
 	MODBUS_READ_WRITE_MULTIPLE_REGISTERS = 23,
 	MODBUS_READ_FIFO_QUEUE = 24,
@@ -137,6 +145,7 @@ typedef enum {
 	MODBUS_AO_START_NUMBER = 40001, // Analog output (holding registers)
 	MODBUS_AO_END_NUMBER = 49999
 } modbus_register_number_t;
+
 
 /*
  * Global variables

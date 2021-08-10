@@ -171,6 +171,7 @@ int8_t modbus_slave_process_msg(const uint8_t *buffer, int len)
 	 * it wraps all necessary buffers and variables */
 	modbus_transaction_t transaction;
 	int8_t callback_result;
+	uint8_t buffer_pos = 0;
 
 	if (len < MODBUS_MINIMAL_FRAME_LEN) {
 		/* frame too short; return error */
@@ -181,43 +182,78 @@ int8_t modbus_slave_process_msg(const uint8_t *buffer, int len)
 	uint16_t crc_calculated = modbus_CRC16(buffer, len - 2);
 	if (crc_received != crc_calculated) {
 		/* CRC mismatch, return error */
-		printf("crc mismatch: received 0x%x, calculated 0x%x\n", crc_received, crc_calculated);
+		//printf("crc mismatch: received 0x%x, calculated 0x%x\n", crc_received, crc_calculated);
 		return MODBUS_ERROR_CRC;
 	}
 	/* check if address matches ours */
-	uint8_t address = buffer[0];
+	uint8_t address = buffer[buffer_pos++];
 	if (address != modbus_slave_address && address != MODBUS_BROADCAST_ADDR) {
 		/* Message is not for us */
 		return MODBUS_OK;
 	}
 	/* get function code */
-	transaction.function_code = buffer[1];
+	transaction.function_code = buffer[buffer_pos++];
 	transaction.exception.exception_code = 0;
 
+	if (transaction.function_code == MODBUS_READ_DEVICE_IDENTIFICATION) {
+		// TODO
+		goto modbus_send;
+	}
+
+	/* set starting register number */
 	switch (transaction.function_code) {
-	/*
-	 * MODBUS_READ_INPUT_REGISTERS: read-only registers
-	 * Modbus application protocol, section 6.4
-	 */
-	case MODBUS_READ_HOLDING_REGISTERS:
+	/* coils */
+	case MODBUS_READ_DO:
+	case MODBUS_WRITE_SINGLE_DO:
+	case MODBUS_WRITE_MULTIPLE_DO:
+		transaction.register_number = MODBUS_DO_START_NUMBER;
+		break;
+	/* discrete inputs */
+	case MODBUS_READ_DI:
+		transaction.register_number = MODBUS_DI_START_NUMBER;
+		break;
+	/* input registers */
+	case MODBUS_READ_AI:
+		transaction.register_number = MODBUS_AI_START_NUMBER;
+		break;
+	/* holding registers */
+	case MODBUS_READ_AO:
+	case MODBUS_WRITE_SINGLE_AO:
+	case MODBUS_WRITE_MULTIPLE_AO:
+	case MODBUS_READ_WRITE_MULTIPLE_REGISTERS:
+		transaction.register_number = MODBUS_AO_START_NUMBER;
+		break;	
+	}
+
+	#define MODBUS_FLAG_WRITE  0x01
+	#define MODBUS_FLAG_SINGLE 0x02
+	uint8_t flags = 0x00;
+
+	/* process message */
+	switch (transaction.function_code) {
+	case MODBUS_WRITE_SINGLE_COIL:
+	case MODBUS_WRITE_SINGLE_REGISTER: /* holding register */
+		flags |= MODBUS_FLAG_SINGLE;
+	case MODBUS_WRITE_MULTIPLE_COILS:
+	case MODBUS_WRITE_MULTIPLE_REGISTERS:
+		flags |= MODBUS_FLAG_WRITE;
+	case MODBUS_READ_DISCRETE_INPUTS:
+	case MODBUS_READ_COILS:
 	case MODBUS_READ_INPUT_REGISTERS:
+	case MODBUS_READ_HOLDING_REGISTERS:
 		if (len < (MODBUS_MINIMAL_FRAME_LEN + 4)) {
 			/* buffer too short to contain everything we need */
 			return MODBUS_ERROR;
 		}
-		transaction.register_address = (buffer[2] << 8) | buffer[3];
-		transaction.register_count = (buffer[4] << 8) | buffer[5];
+		transaction.register_address = (buffer[buffer_pos++] << 8) | buffer[buffer_pos++];
+		transaction.register_count = (buffer[buffer_pos++] << 8) | buffer[buffer_pos++];
 		if (
 				transaction.register_count < 1 ||
 				transaction.register_count > MODBUS_MAX_REGISTERS
 		   ) {
 			transaction.exception.exception_code = MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE;
 		}
-		if (transaction.function_code == MODBUS_READ_HOLDING_REGISTERS) {
-			transaction.register_number = MODBUS_AO_START_NUMBER;
-		} else if (transaction.function_code == MODBUS_READ_INPUT_REGISTERS) {
-			transaction.register_number = MODBUS_AI_START_NUMBER;
-		}
+		// add offset to register number
 		transaction.register_number += transaction.register_address;
 		break;
 	default:
@@ -226,7 +262,7 @@ int8_t modbus_slave_process_msg(const uint8_t *buffer, int len)
 		transaction.exception.exception_code = MODBUS_EXCEPTION_ILLEGAL_FUNCTION;
 		break;
 	}
-	/* data in modbus_buffer have been processed and buffer can be used for TX */
+	/* data in modbus_buffer have been processed and buffer can be re-used for TX */
 	/* handle reply */
 	if (transaction.exception.exception_code != 0) {
 		/* indicate error */
@@ -244,6 +280,7 @@ int8_t modbus_slave_process_msg(const uint8_t *buffer, int len)
 		}
 	}
 	uint8_t msg_len = 0;
+modbus_send:
 	if (address != MODBUS_BROADCAST_ADDR) {
 		/* send only if master request was not broadcast */
 		modbus_copy_reply_to_buffer(modbus_buffer, &msg_len, &transaction);
