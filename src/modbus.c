@@ -116,7 +116,7 @@ int8_t modbus_slave_process_msg(const uint8_t *buffer, int len)
 	uint16_t crc_calculated = modbus_CRC16(buffer, len - 2);
 	if (crc_received != crc_calculated) {
 		/* CRC mismatch, return error */
-		//printf("crc mismatch: received 0x%x, calculated 0x%x\n", crc_received, crc_calculated);
+		printf("crc mismatch: received 0x%x, calculated 0x%x\n", crc_received, crc_calculated);
 		return MODBUS_ERROR_CRC;
 	}
 	/* check if address matches ours */
