@@ -82,7 +82,7 @@ int8_t modbus_slave_callback(modbus_transaction_t *transaction)
 
 }
 
-int8_t modbus_transmit_function(uint8_t *buffer, int data_len)
+int8_t modbus_transmit_function(uint8_t *buffer, uint16_t data_len)
 {
 	actual_out_frame_len[test_number] = 0;
 	for (int i = 0; i < data_len; i++) {
