@@ -32,5 +32,5 @@ https://ipc2u.com/articles/knowledge-base/modbus-rtu-made-simple-with-detailed-d
 
 https://modbus.org/docs/Modbus_over_serial_line_V1_02.pdf
 
-https://www.modbus.org/docs/Modbus_Application_Protocol_V1_1b.pdf----------------------------------------
+https://www.modbus.org/docs/Modbus_Application_Protocol_V1_1b.pdf
 
