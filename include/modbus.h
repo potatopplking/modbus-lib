@@ -39,18 +39,33 @@
 #define SRC_MODBUS_H_
 
 #include "stdint.h"
+#include "stddef.h"
+#include "string.h"
 
 /*
  * Defines & macros
  */
 
 #define MODBUS_BROADCAST_ADDR 0
-#define MODBUS_DEFAULT_SLAVE_ADDRESS 254 /* 255 may be used for bridge device */
+#define MODBUS_DEFAULT_SLAVE_ADDRESS 247 /* 255 may be used for bridge device */
 /* minimal frame length is 4 bytes: 1 B slave address, 1 B function code, 2 B CRC */
 #define MODBUS_MINIMAL_FRAME_LEN 4
+#define MODBUS_MINIMAL_READWRITE_LEN 4
+#define MODBUS_MINIMAL_WRITE_MULTIPLE_LEN 5
+#define MODBUS_READ_DEVICE_ID_REQUEST_LEN 4
+#define MODBUS_READ_DEVICE_ID_RESPONSE_HEADER_LEN 4
+#define MODBUS_READ_DEVICE_ID_RESPONSE_OFFSET 3
 #define MODBUS_MAX_RTU_FRAME_SIZE 256
+#define MODBUS_BUFFER_SIZE MODBUS_MAX_RTU_FRAME_SIZE /* alias */
 #define MODBUS_ERROR_FLAG 0x80
 #define MODBUS_MAX_REGISTERS 125
+/* read device id constants */
+#define MODBUS_MEI 0x0E
+#define MODBUS_DEVICE_ID_INDIVIDUAL_ACCESS_FLAG 0x80
+#define MODBUS_MORE_FOLLOWS 0xFF
+#define MODBUS_NO_MORE_FOLLOWS 0x00
+#define MODBUS_BASIC_OBJECT_COUNT 3
+#define MODBUS_REGULAR_OBJECT_COUNT 7
 
 /*
  * Return values
@@ -63,6 +78,7 @@
 #define MODBUS_ERROR_OUT_OF_BOUNDS -4 // requested register is out of bounds
 #define MODBUS_ERROR_FUNCTION_NOT_IMPLEMENTED -5 // function not implemented in callback
 #define MODBUS_ERROR_REGISTER_NOT_IMPLEMENTED -6 // register not implemented in callback
+#define MODBUS_ERROR_DEVICE_ID_NOT_IMPLEMENTED -7
 
 /*
  * Data types
@@ -106,6 +122,7 @@ typedef enum {
 typedef enum {
 	MODBUS_EXCEPTION_ILLEGAL_FUNCTION = 1,
 	MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS = 2,
+	MODBUS_EXCEPTION_ILLEGAL_REGISTER_QUANTITY = 2,
 	MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE = 3,
 	MODBUS_EXCEPTION_SLAVE_DEVICE_FAILURE = 4,
 	MODBUS_EXCEPTION_ACKNOWLEDGE = 5,
@@ -113,11 +130,8 @@ typedef enum {
 	MODBUS_EXCEPTION_MEMORY_PARITY_ERROR = 8,
 	MODBUS_EXCEPTION_GATEWAY_PATH_UNAVAILABLE = 10,
 	MODBUS_EXCEPTION_GATEWAY_TARGET_DEVICE_FAILED_TO_RESPOND = 11,
+	MODBUS_EXCEPTION_ILLEGAL_DEVICE_ID_CODE = 3
 } modbus_exception_code_t;
-
-typedef struct {
-	uint8_t exception_code;
-} exception_t;
 
 typedef struct {
 	modbus_function_code_t function_code : 8;
@@ -125,14 +139,22 @@ typedef struct {
 	uint16_t register_number;  // e.g. first register of A0: 40001
 	uint8_t  register_count; // number of registers to be read/written
 
-	exception_t exception;
+	modbus_exception_code_t exception;
+
+	uint8_t broadcast; // 1 if broadcast, 0 otherwise
 
 	union {
 		uint8_t buffer8b[MODBUS_MAX_RTU_FRAME_SIZE];
 		uint16_t buffer16b[MODBUS_MAX_RTU_FRAME_SIZE/2];
 		uint16_t input_registers[MODBUS_MAX_REGISTERS];
 		uint16_t holding_registers[MODBUS_MAX_REGISTERS];
+		int16_t  input_registers_signed[MODBUS_MAX_REGISTERS];
+		int16_t  holding_registers_signed[MODBUS_MAX_REGISTERS];
 	};
+
+	/* process device id */
+	uint8_t read_device_id_code;
+	uint8_t object_id;
 } modbus_transaction_t;
 
 typedef enum {
@@ -146,6 +168,34 @@ typedef enum {
 	MODBUS_AO_END_NUMBER = 49999
 } modbus_register_number_t;
 
+typedef enum {
+	MODBUS_CONFORMITY_BASIC = 1,
+	MODBUS_CONFORMITY_REGULAR = 2,
+	MODBUS_CONFORMITY_EXTENDED = 3,
+	MODBUS_INDIVIDUAL_ACCESS = 4 /* not actually part of conformity, but I'll keep it here anyway */
+} modbus_conformity_level_t;
+
+/* Device ID datatypes */
+#define MODBUS_DEVICE_ID_OBJECT_NUM 7
+typedef struct {
+	union {
+		struct {
+			/* Basic category (mandatory part) */
+			char *VendorName;
+			char *ProductCode;
+			char *MajorMinorRevision;
+			/* Regular category (optional part) */
+			char *VendorUrl;
+			char *ProductName;
+			char *ModelName;
+			char *UserApplicationName;
+			/* Extended category (optional part) */
+			// Nothing here yet!
+		} object_name;
+		char *object_id[MODBUS_DEVICE_ID_OBJECT_NUM];
+	};
+	uint8_t conformity_level;
+} modbus_device_id_t;
 
 /*
  * Global variables
@@ -156,6 +206,9 @@ extern uint8_t modbus_slave_address;
 
 /* shared modbus buffer; defined in modbus.c; may be used elsewhere in code */
 extern uint8_t modbus_buffer[];
+
+/* modbus device id struct */
+extern modbus_device_id_t *modbus_device_id;
 
 /*
  * Function prototypes
@@ -168,10 +221,11 @@ extern uint8_t modbus_buffer[];
  * Both functions have to be implemented by user.
  */
 int8_t modbus_slave_process_msg(const uint8_t *buffer, int len);
+int8_t modbus_slave_init_device_id(modbus_device_id_t *device_id);
 int8_t modbus_slave_set_address(uint8_t address);
 /* modbus callback function type - should be implemented by user (e.g. in main.c) */
 int8_t modbus_slave_callback(modbus_transaction_t *transaction);
 /* UART transmit function type - should be implemented by user (e.g. in main.c) */
-int8_t modbus_transmit_function(uint8_t *buffer, int data_len);
+int8_t modbus_transmit_function(uint8_t *buffer, uint16_t data_len);
 
 #endif /* SRC_MODBUS_H_ */
